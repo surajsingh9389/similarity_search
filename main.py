@@ -2,7 +2,9 @@ import numpy as np
 import heapq
 from google import genai
 import os
+import pickle
 from dotenv import load_dotenv
+
 
 # 1. Load your .env file
 load_dotenv()
@@ -28,16 +30,22 @@ def get_top_k(scores, k):
     new_scores = heapq.nlargest(k, enumerate(scores), key=lambda x: x[1])
     
     return new_scores 
+
+def safe_normalize(v):
+    magnitude = np.linalg.norm(v)
+    if magnitude == 0:
+        return v
+    return v/magnitude
+    
    
 
-def semantic_search(query_embedding, sentence_embeddings, sentences, k):
+def semantic_search(query, normalize_embeddings, sentences, k):
     
-    # Normalize 
-    normalize_sentence = [v /np.linalg.norm(v) for v in sentence_embeddings]
-    normalize_query = query_embedding/np.linalg.norm(query_embedding)
+    embedding_query = get_embedding(query)
+    normalize_query = safe_normalize(embedding_query)
     
     # Similarity 
-    scores = [np.dot(normalize_query, v) for v in normalize_sentence]
+    scores = [np.dot(normalize_query, v) for v in normalize_embeddings]
 
     top_matches = get_top_k(scores, k)
     
@@ -52,17 +60,31 @@ sentences = [
  "Football is a great sport"
 ]
 
-query = "I love Ai"
+CACHE_FILE = r"projects\semantic_search\embeddings.pkl"
 
-k = int(input("How many top matches you want?: "))
+# API Call Cost Optimization (Caching)
 
-# Convert all sentences -> embeddings 
-sentence_embeddings = [get_embedding(s) for s in sentences]
-
-# Query embedding 
-query_embedding = get_embedding(query)
+if os.path.exists(CACHE_FILE):
+    print("Loading embeddings from cache...")
+    with open(CACHE_FILE, "rb") as f:
+        normalized_embeddings = pickle.load(f)
         
-top_matches = semantic_search(query_embedding, sentence_embeddings, sentences, k)
+else: 
+    print("Fetching embeddings from Gemini...")
+    raw_embeddings = [get_embedding(v) for v in sentences]
+    # Avoid Normalizing Every Query (Pre-normalization)
+    normalized_embeddings = [safe_normalize(v) for v in raw_embeddings]
+    
+    # This will create the folders if they don't exist
+    os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+    
+    with open(CACHE_FILE, "wb") as f:
+        pickle.dump(normalized_embeddings, f)
 
-print(top_matches)
+query = input("Enter your search query: ")
+k = int(input("How many top matches you want?: "))
+        
+results = semantic_search(query, normalized_embeddings, sentences, k)
+
+print(results)
 
