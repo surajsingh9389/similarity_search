@@ -22,6 +22,24 @@ def get_embedding(text):
 
     return np.array(result.embeddings[0].values).astype('float32')
 
+# LLM Response Funtion 
+def generate_answer(context, query):
+    prompt = f"""
+    Answer the question using ONLY the context below.
+    
+    Context: 
+    {context}
+    
+    Question:
+    {query}
+    """
+    
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+    
+    return response.text
 
 # normalize the vector 
 def safe_normalize(v):
@@ -30,13 +48,8 @@ def safe_normalize(v):
         return v
     return v/magnitude
     
-
-sentences = [
- "I love machine learning",
- "Python is great for backend",
- "AI is the future",
- "Football is a great sport"
-]
+with open("sentences.txt", "r") as file:
+    sentences = [line.strip() for line in file]
 
 # Sentences embedding
 raw_embeddings = [get_embedding(v) for v in sentences]
@@ -49,6 +62,7 @@ embeddings_matrix = np.array(normalized_embeddings).astype('float32')
 
 # dimension of embedding
 d = embeddings_matrix.shape[1]  # .shape -> (row, cols)
+print(d)
 
 # container or database that holds all your vectors 
 index = faiss.IndexFlatIP(d) # Inner Product (best for cosine)
@@ -56,17 +70,22 @@ index = faiss.IndexFlatIP(d) # Inner Product (best for cosine)
 # Add embeddigs to the database 
 index.add(embeddings_matrix)
 
-query = input("Enter your search query: ")
-k = int(input("How many top matches you want?: "))
+query = input("Ask Something: ")
+k = 5
 
+# Query Embedding and Normalization 
 query_embedding = get_embedding(query)
-print(query_embedding)
-
 normalized_query = safe_normalize(query_embedding)
-
 normalized_query = np.array([normalized_query]).astype('float32')
 
 distances, indices = index.search(normalized_query, k)
 
-for i, idx in enumerate(indices[0]):
-    print(f"{i+1}. {sentences[idx]} (score: {distances[0][i]:.4f})")
+# Retrieve context 
+retrieved_sents = [sentences[i] for i in indices[0]]
+                   
+context = '\n'.join(retrieved_sents)
+
+# Generate Answer 
+answer = generate_answer(context, query)
+print(answer)
+
